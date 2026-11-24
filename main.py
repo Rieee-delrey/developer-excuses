@@ -1,44 +1,51 @@
 #!/usr/bin/env python3
-"""Write the one-line developer excuse to /output/entry.txt.
+"""Write one developer-excuse line to /output/entry.txt.
 
-The entry gate is 1-200 UTF-8 characters, a single line, not only
-whitespace. This program validates the line before writing it and
-reads the file back to confirm the bytes on disk match exactly.
+The line is validated before anything is written: it must be non-blank,
+a single line, and within the 1-200 character gate. After writing, the
+file is read back and its bytes must match the line exactly.
 """
 
-import hashlib
-import os
 import sys
+from pathlib import Path
+
+OUTPUT_PATH = Path("/output/entry.txt")
 
 LINE = "The bug lives in a commit from an intern who left in 2021, and the commit message just says 'fixed stuff'."
 
-MIN_CHARS = 1
-MAX_CHARS = 200
+
+def fail(message: str) -> None:
+    print(f"error: {message}", file=sys.stderr)
+    raise SystemExit(1)
 
 
-def main() -> None:
-    text = LINE
-    if not (MIN_CHARS <= len(text) <= MAX_CHARS):
-        print(f"entry is {len(text)} chars, outside the 1-200 gate", file=sys.stderr)
-        sys.exit(1)
-    if not text.strip():
-        print("entry is blank", file=sys.stderr)
-        sys.exit(1)
-    if "\n" in text or "\r" in text:
-        print("entry must be a single line", file=sys.stderr)
-        sys.exit(1)
+def main() -> int:
+    if not LINE or not LINE.strip():
+        fail("line is blank")
+    if LINE != LINE.strip():
+        fail("line has leading or trailing whitespace")
+    if "\n" in LINE or "\r" in LINE:
+        fail("line must be a single line")
+    if not 1 <= len(LINE) <= 200:
+        fail(f"line length {len(LINE)} is outside the 1-200 gate")
 
-    os.makedirs("/output", exist_ok=True)
-    with open("/output/entry.txt", "w", encoding="utf-8") as f:
-        f.write(text)
+    encoded = LINE.encode("utf-8")
+    if len(encoded) != len(LINE):
+        fail("line must be plain ASCII so byte length equals character length")
+    assert encoded == LINE.encode("ascii"), "line must be plain ASCII"
 
-    with open("/output/entry.txt", "rb") as f:
-        written = f.read()
-    if written != text.encode("utf-8"):
-        print("read-back mismatch", file=sys.stderr)
-        sys.exit(1)
-    print(f"wrote {len(written)} bytes, sha256 {hashlib.sha256(written).hexdigest()}")
+    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    OUTPUT_PATH.write_bytes(encoded)
+
+    on_disk = OUTPUT_PATH.read_bytes()
+    if on_disk != encoded:
+        fail("bytes on disk do not match the validated line")
+    if on_disk.endswith(b"\n"):
+        fail("unexpected trailing newline on disk")
+
+    print(f"wrote {len(on_disk)} bytes to {OUTPUT_PATH}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
